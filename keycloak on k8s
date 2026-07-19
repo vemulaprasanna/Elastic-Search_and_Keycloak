@@ -1,0 +1,604 @@
+
+
+Summary
+This SOP document explains the step wise procedure of troubleshooting for email template issue from keycloak. 
+Steps of Procedure:
+Checked the both dev and stage environments configurations of keycloak application.
+Found the change in Email theme as keycloak in Theme configuration in Stage environment.
+Changed the Email Theme as base and saved.
+Checked the keycloak deployment configuration file with dev.
+Checked the email configuration folder in the keycloak Pod in both dev and stage.
+Found wrongly placed email path for template creation. 
+Taken the backup from dev and replicated it on stage environment.
+Tested the connection.
+
+
+To resolve the issue we thought to check by changing all the files that act in sending the mail
+created all the files in the email directory. (text file has the configuration that integrates to send the templates)
+Restarted the keycloak deploy.
+
+
+=====================
+keyclock
+move realms and users from prod to stage environment:
+realms:
+Login into keyclock prod from web with credentials.
+left side we can see coligomed users, then click export under the list.
+We need to click ON to export and click on export then file will download.
+After download complete we need to set as before as OFF and logout.
+
+
+
+
+
+https://stackoverflow.com/questions/72133083/postgres-how-to-kill-all-long-running-queries-that-match-a-particular-query
+
+https://medium.com/little-programming-joys/finding-and-killing-long-running-queries-on-postgres-7c4f0449e86d
+
+
+
+kubectl run -it --rm --image=postgres:17.0.0 pg-client -- bash
+
+
+
+
+========= implementation =========
+
+Goto DHP-POC and ssh to bastian-host.
+select respective project and select cluster you want to set up
+     
+
+            value: JeSRe4DsmQbhGgbV
+          - name: KEYCLOAK_ADMIN
+            value: admin
+          - name: KEYCLOAK_ADMIN_PASSWORD
+            value: OZXVCDnIpn2YZXFF
+
+
+
+ kubectx
+ kubectx <clustername>
+ kubectl get ns   or  kubens
+ kubectl create namespace tools
+ kubens tools
+ kubectl deploy keycloak-dr.yaml
+
+
+
+kubectl apply  --dry-run --validate -f clean-kong.json
+
+kubectl delete cm,ep,pvc,pod,secrets,svc,deploy,rs,leases --all --namespace=kong
+
+kubectl get all --namespace=kong
+kubectl get all -n tools
+kubectl delete pod my-kong-postgresql-0
+kubectl get pod --namespace=kong
+
+kubectl get <pod/podnm> -n tools -o yml
+kubectl get <service/svc-nm> -n tools -o yml
+
+
+
+psql -h 127.0.0.1 -U postgres -p SOURCE-PORT
+
+Port: 5432
+
+
+Export and Import
+=================
+1.
+connect to apllication
+coligomed-users --> export --> on both -->click on export --> download to local --> off both
+Go to client --> coligomed-apps --> roles 
+users --> view all users
+Logout
+2.
+SSH to existing keycloak vm
+docker ps
+remove if any folder called keycloak-export from your user, /tmp, pwd /home/<user>, cd ~
+docker exec -it sleepy_antonelli  /bin/bash
+
+Run below cmd to get export data:
+/opt/jboss/keycloak/bin/standalone.sh -Dkeycloak.migration.action=export -Dkeycloak.migration.provider=dir -Dkeycloak.migration.dir=/opt/jboss/keycloak-export -Dkeycloak.migration.usersExportStrategy=DIFFERENT_FILES -Dkeycloak.migration.usersPerFile=100 -Djboss.http.port=8888 -Djboss.https.port=9999 -Djboss.management.http.port=7777 -Djboss.management.https.port=7776 
+
+check keycloak-export folder (10 files) 
+exit from pod
+sudo docker cp sleepy_antonelli:opt/jboss/keycloak-export .
+check keycloak-export folder (10 files) 
+sudo mv keycloak-export /tmp
+sudo chmod 777 keycloak-export/
+sudo gzip -r keycloak-export/
+ls -ltr
+Sudo chown -R uname:uname(manoj_kumar:manoj_kumar)  keycloak-export
+exit from vm.
+3.
+Connect to k8s application 
+coligomed-users --> import --> select releam file from local --> overwrite -->import
+extract all file in the local from zip to normal
+
+4.
+SSH to bastion host (instance-2)
+kubectx
+ls 
+remove all existing files from export 
+rm -rf <file_name>
+download all files
+kubens
+kubectl get pod
+Kubectl exec -it <pod-name> -n <name-space> --/bin/bash
+cd /opt/jboss
+if keycloak-export exists, mv that to file keycloak-export.backup<dateofexecution>
+mv <file_name> <destination_file>
+mkdir -p keycloak-export
+check file if it empty or not
+exit
+kubectl cp <filename> <pod-name>:opt/jboss/keycloak-export -n <name-space> (repeat for all 10 files)
+Kubectl exec -it <pod-name> -n <name-space> --/bin/bash
+cd /opt/jboss
+cd keycloak-export 
+check all files are available or not
+exit
+Kubectl exec -it <pod-name> -n <name-space> --/bin/bash
+/opt/jboss/keycloak/bin/standalone.sh -Dkeycloak.migration.action=import -Dkeycloak.migration.provider=dir -Dkeycloak.migration.dir=/opt/jboss/keycloak-export -Dkeycloak.migration.usersExportStrategy=DIFFERENT_FILES -Dkeycloak.migration.usersPerFile=100 -Djboss.http.port=8888 -Djboss.https.port=9999 -Djboss.management.http.port=7777 -Djboss.management.https.port=7776 -Dkeycloak.migration.realmName=coligomed-users
+exit
+5. 
+Connect with both applications
+check users list and client roles
+
+
+================ stage-dr ==================
+
+kubectx
+kubectx gke_dhp-stage_us-central1_dhp-stage-uscentral1-privcluster01
+kubens
+kubens tools
+kubectl get deploy
+kubectl apply -f keycloak.yaml -n tools
+kubectl create -f keycloak.yaml -n tools
+kubectl get svc
+kubectl create -f keycloak-service.yaml -n tools
+kubectl get pvc
+kubectl apply -f pvc.yaml -n tools
+kubectl get pv
+kubectl apply -f pv.yaml -n tools
+kubectl get ingress
+kubectl create -f keycloak-ingress.yaml -n tools
+
+https://34.49.47.96:8080/auth
+
+
+30643
+
+From Stage-DR:
+==============
+
+kubectl get deploy -o yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: keycloak
+  name: keycloak
+  namespace: tools
+spec:
+  selector:
+    matchLabels:
+      app: keycloak
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: keycloak
+    spec:
+      containers:
+      - env:
+        - name: DB_VENDOR
+          value: POSTGRES
+        - name: DB_ADDR
+          value: 10.184.240.5
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_DATABASE
+          value: keycloak-staging
+        - name: DB_USER
+          value: keycloak
+        - name: DB_PASSWORD
+          value: 6tPXdQq298kXaQ4y
+        - name: KC_PROXY
+          value: edge
+        - name: KEYCLOAK_USER
+          value: admin
+        - name: KEYCLOAK_PASSWORD
+          value: JeSRe4DsmQbhGgbV
+        - name: KEYCLOAK_ADMIN
+          value: admin
+        - name: KEYCLOAK_ADMIN_PASSWORD
+          value: OZXVCDnIpn2YZXFF
+        - name: JAVA_OPTS
+          value: -Dkeycloak.profile.feature.scripts=enabled -Dkeycloak.profile.feature.upload_scripts=enabled
+        image: quay.io/keycloak/keycloak:16.0.0
+        imagePullPolicy: IfNotPresent
+        name: keycloak
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        resources: {}
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /opt/jboss/keycloak/themes/base/email
+          name: keycloak-pv-storage
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext:
+        fsGroup: 2000
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: keycloak-pv-storage
+        persistentVolumeClaim:
+          claimName: keycloak-pvc-dr
+
+
+
+From Stage:
+===========
+
+kubectl get deploy -o yaml
+
+apiVersion: v1
+items:
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    annotations:
+      deployment.kubernetes.io/revision: "6"
+    creationTimestamp: "2022-05-12T10:10:13Z"
+    generation: 6
+    labels:
+      app: keycloak
+    name: keycloak
+    namespace: tools
+    resourceVersion: "687274901"
+    uid: e0541a3f-06b6-4bca-9284-053e8da25fb5
+  spec:
+    progressDeadlineSeconds: 600
+    replicas: 1
+    revisionHistoryLimit: 10
+    selector:
+      matchLabels:
+        app: keycloak
+    strategy:
+      rollingUpdate:
+        maxSurge: 25%
+        maxUnavailable: 25%
+      type: RollingUpdate
+    template:
+      metadata:
+        annotations:
+          kubectl.kubernetes.io/restartedAt: "2023-06-05T11:07:41Z"
+        creationTimestamp: null
+        labels:
+          app: keycloak
+      spec:
+        containers:
+        - env:
+          - name: DB_VENDOR
+            value: POSTGRES
+          - name: PROXY_ADDRESS_FORWARDING
+            value: "true"
+          - name: DB_ADDR
+            value: 10.184.240.5
+          - name: DB_PORT
+            value: "5432"
+          - name: DB_DATABASE
+            value: keycloak-staging
+          - name: DB_USER
+            value: keycloak
+          - name: DB_PASSWORD
+            value: 6tPXdQq298kXaQ4y
+          - name: KC_PROXY
+            value: edge
+          - name: KEYCLOAK_USER
+            value: admin
+          - name: KEYCLOAK_PASSWORD
+            value: mC7uN6hFcYrs8XxQ
+          - name: KEYCLOAK_ADMIN
+            value: admin
+          - name: KEYCLOAK_ADMIN_PASSWORD
+            value: MQpxxzyX4sqRLQZX
+          - name: JAVA_OPTS
+            value: -Dkeycloak.profile.feature.scripts=enabled -Dkeycloak.profile.feature.upload_scripts=enabled
+          image: quay.io/keycloak/keycloak:16.0.0
+          imagePullPolicy: IfNotPresent
+          name: keycloak
+          ports:
+          - containerPort: 8080
+            name: http
+            protocol: TCP
+          resources: {}
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+          - mountPath: /opt/jboss/keycloak/themes/base/email
+            name: keycloak-pv-storage
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
+        schedulerName: default-scheduler
+        securityContext:
+          fsGroup: 2000
+        terminationGracePeriodSeconds: 30
+        volumes:
+        - name: keycloak-pv-storage
+          persistentVolumeClaim:
+            claimName: keycloak-pvc-stage
+  status:
+    availableReplicas: 1
+    conditions:
+    - lastTransitionTime: "2022-05-12T10:10:13Z"
+      lastUpdateTime: "2023-06-05T11:07:43Z"
+      message: ReplicaSet "keycloak-7c647fc6ff" has successfully progressed.
+      reason: NewReplicaSetAvailable
+      status: "True"
+      type: Progressing
+    - lastTransitionTime: "2024-06-04T06:34:17Z"
+      lastUpdateTime: "2024-06-04T06:34:17Z"
+      message: Deployment has minimum availability.
+      reason: MinimumReplicasAvailable
+      status: "True"
+      type: Available
+    observedGeneration: 6
+    readyReplicas: 1
+    replicas: 1
+    updatedReplicas: 1
+      type: Available
+kind: List
+metadata:
+  resourceVersion: ""
+
+
+
+
+kubectl get svc -o yaml
+------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    cloud.google.com/neg: '{"ingress":true}'
+  creationTimestamp: "2022-05-12T10:10:19Z"
+  labels:
+    app: keycloak
+  name: keycloak
+  namespace: tools
+  resourceVersion: "80753991"
+  uid: efb5538d-9ced-4ffb-a989-c21159eeff0c
+spec:
+  clusterIP: 10.48.233.154
+  clusterIPs:
+  - 10.48.233.154
+  externalTrafficPolicy: Cluster
+  internalTrafficPolicy: Cluster
+  ipFamilies:
+  - IPv4
+  ipFamilyPolicy: SingleStack
+  ports:
+  - name: http
+    nodePort: 30032
+    port: 8080
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: keycloak
+  sessionAffinity: None
+  type: NodePort
+status:
+  loadBalancer: {}
+
+
+
+kubectl get pv -o yaml
+
+---------
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  creationTimestamp: "2022-05-12T10:08:52Z"
+  finalizers:
+  - kubernetes.io/pv-protection
+  - external-attacher/pd-csi-storage-gke-io
+  labels:
+    topology.kubernetes.io/region: us-central1
+    topology.kubernetes.io/zone: us-central1-a__us-central1-c
+  name: keycloak-pv-stage
+  resourceVersion: "687272211"
+  uid: 498667c2-4bb2-4ed6-a485-9950bf1c9e67
+spec:
+  accessModes:
+  - ReadWriteOnce
+  capacity:
+    storage: 2Gi
+  claimRef:
+    apiVersion: v1
+    kind: PersistentVolumeClaim
+    name: keycloak-pvc-stage
+    namespace: tools
+    resourceVersion: "629378"
+    uid: 579cc6eb-3ba9-47c8-9bf8-6608e95ebd32
+  gcePersistentDisk:
+    fsType: ext4
+    pdName: keycloak-pv-stage
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: topology.kubernetes.io/zone
+          operator: In
+          values:
+          - us-central1-a
+          - us-central1-c
+        - key: topology.kubernetes.io/region
+          operator: In
+          values:
+          - us-central1
+  persistentVolumeReclaimPolicy: Delete
+  storageClassName: standard
+  volumeMode: Filesystem
+status:
+  phase: Bound
+
+
+
+kubectl get pvc -o yaml
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  annotations:
+    pv.kubernetes.io/bind-completed: "yes"
+  creationTimestamp: "2022-05-12T10:09:54Z"
+  finalizers:
+  - kubernetes.io/pvc-protection
+  name: keycloak-pvc-stage
+  namespace: tools
+  resourceVersion: "629382"
+  uid: 579cc6eb-3ba9-47c8-9bf8-6608e95ebd32
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+  storageClassName: standard
+  volumeMode: Filesystem
+  volumeName: keycloak-pv-stage
+status:
+  accessModes:
+  - ReadWriteOnce
+  capacity:
+    storage: 2Gi
+  phase: Bound
+
+
+
+
+
+================================ version 23.0.1 ========================
+From stage:
+-----------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    deployment.kubernetes.io/revision: "16"
+  creationTimestamp: "2022-05-12T10:10:13Z"
+  generation: 42
+  labels:
+    app: keycloak
+  name: keycloak
+  namespace: tools
+  resourceVersion: "861447347"
+  uid: e0541a3f-06b6-4bca-9284-053e8da25fb5
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: keycloak
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/restartedAt: "2024-10-19T09:16:45Z"
+      creationTimestamp: null
+      labels:
+        app: keycloak
+    spec:
+      containers:
+      - args:
+        - start
+        - --cache-stack=kubernetes
+        - --spi-login-protocol-openid-connect-legacy-logout-redirect-uri=true
+        env:
+        - name: KC_DB
+          value: postgres
+        - name: KC_DB_URL
+          value: jdbc:postgresql://10.184.240.5:5432/keycloak-staging
+        - name: KC_DB_URL_HOST
+          value: 10.184.240.5
+        - name: KC_DB_URL_PORT
+          value: "5432"
+        - name: KC_DB_URL_DATABASE
+          value: keycloak
+        - name: PROXY_ADDRESS_FORWARDING
+          value: "true"
+        - name: KC_DB_USERNAME
+          value: keycloak
+        - name: KC_DB_PASSWORD
+          value: 6tPXdQq298kXaQ4y
+        - name: KC_PROXY
+          value: edge
+        - name: KEYCLOAK_USER
+          value: admin
+        - name: KEYCLOAK_PASSWORD
+          value: JeSRe4DsmQbhGgbV
+        - name: KEYCLOAK_ADMIN
+          value: admin
+        - name: KEYCLOAK_ADMIN_PASSWORD
+          value: mC7uN6hFcYrs8XxQ
+        - name: jgroups.dns.query
+          value: keycloak
+        - name: KC_HEALTH_ENABLED
+          value: "true"
+        - name: KC_METRICS_ENABLED
+          value: "true"
+        - name: KC_HTTP_ENABLED
+          value: "true"
+        - name: KC_HTTP_RELATIVE_PATH
+          value: /auth
+        - name: KC_HOSTNAME_URL
+          value: https://kas-stage.coligomed.com/auth/
+        - name: KC_HOSTNAME_ADMIN_URL
+          value: https://kas-stage.coligomed.com/auth/
+        image: quay.io/keycloak/keycloak:23.0.1
+        imagePullPolicy: IfNotPresent
+        name: keycloak
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        resources:
+          limits:
+            cpu: "2"
+            memory: 2Gi
+          requests:
+            cpu: "1"
+            memory: 1638Mi
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /opt/jboss/keycloak/themes/base/email
+          name: keycloak-pv-storage
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext:
+        fsGroup: 2000
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: keycloak-pv-storage
+        persistentVolumeClaim:
+          claimName: keycloak-pvc-stage
+
+
